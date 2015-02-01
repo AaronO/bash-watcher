@@ -22,6 +22,32 @@ function watch() {
     local sleepSeconds=`expr ${seconds} - 1`
     local pid=""
 
+    # Utilty function to command
+    function run() {
+        # Run command and keep PID (for long running commands)
+        bash -c "exec bash -c '${cmd}'" &
+
+        # Keep PID to kill later when needed
+        pid=$!
+
+        # Sleep a bit to avoid false positives
+        # this can happen if the command changes files
+        sleep ${seconds}
+    }
+
+    # Utility kill func
+    function _kill() {
+        local pid=$1
+
+        kill -s KILL ${pid}
+    }
+
+    # Kill command if killed myself
+    trap '_kill ${pid}' EXIT KILL
+
+    # Run first time
+    run
+
     while [[ true ]]
     do
         # See if any files have been modified
@@ -29,23 +55,21 @@ function watch() {
         if [[ ${files} == "" ]] ; then
             echo -n "."
         else
+            echo ""
+            echo "#### Files ####"
+            echo "${files}"
+            echo "####  End  ####"
+            echo ""
+
             # Attempt to kill old process if we have a PID
-            if [[ ${pid} != "" ]]; then
-                output=$(kill -s KILL ${pid} &> /dev/null && echo -n "good" || echo -n "bad")
+            echo "Killing ${pid}"
+            _kill ${pid}
 
-                # Output if killed or not
-                if [[ ${output} == "good" ]] ; then
-                    echo -n "O"
-                else
-                    echo -n "X"
-                fi
-            fi
+            # Wait a tiny bit for cleanup
+            sleep 0.2
 
-            # Run command and keep PID (for long running commands)
-            bash -c "${cmd}" &
-
-            # Keep PID to kill later when needed
-            pid=$!
+            # Run command again
+            run
         fi
         sleep ${sleepSeconds}
     done
@@ -59,3 +83,5 @@ folder=$1
 cmd=${@:2}
 
 watch "${folder}" "${seconds}" "${cmd}"
+
+wait
